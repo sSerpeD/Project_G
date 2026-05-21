@@ -1,8 +1,6 @@
 import { useEffect, useRef } from "react";
 import L from "leaflet";
 import {
-  CENTER,
-  members,
   haversine,
   btsSukhumvit,
   mrtBlueLoop,
@@ -13,10 +11,14 @@ import {
   mrtStations,
   redStations,
 } from "../data/mapData";
+import type { Participant } from "../types";
+import type { CenterResult } from "../lib/centerCalc";
 
 interface MapViewProps {
   radius: number;
   onFlyToReady: (fn: (lat: number, lng: number, zoom: number) => void) => void;
+  participants: Participant[];
+  center: CenterResult | null;
 }
 
 const lineOpts = (color: string, weight = 4): L.PolylineOptions => ({
@@ -28,10 +30,12 @@ const lineOpts = (color: string, weight = 4): L.PolylineOptions => ({
   lineCap: "round",
 });
 
-export default function MapView({ radius, onFlyToReady }: MapViewProps) {
+export default function MapView({ radius, onFlyToReady, participants, center }: MapViewProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<L.Map | null>(null);
   const radiusCircleRef = useRef<L.Circle | null>(null);
+  const participantLayerRef = useRef<L.LayerGroup | null>(null);
+  const centerLayerRef = useRef<L.LayerGroup | null>(null);
 
   // Init map once
   useEffect(() => {
@@ -40,22 +44,16 @@ export default function MapView({ radius, onFlyToReady }: MapViewProps) {
     const map = L.map(containerRef.current, {
       zoomControl: true,
       attributionControl: false,
-    }).setView([CENTER.lat, CENTER.lng], 11);
+    }).setView([13.756, 100.502], 11);
 
     mapRef.current = map;
 
-    // ResizeObserver fires on every container size change:
-    // - initial flex layout settling (replaces the brittle 50ms timeout)
-    // - bottom panel collapse/expand (replaces the manual invalidateSize in togglePanel)
-    // - window resize
     const ro = new ResizeObserver(() => map.invalidateSize());
     ro.observe(containerRef.current!);
 
     L.tileLayer(
       "https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png",
-      {
-        maxZoom: 19,
-      },
+      { maxZoom: 19 },
     ).addTo(map);
 
     // Transit lines
@@ -65,123 +63,30 @@ export default function MapView({ radius, onFlyToReady }: MapViewProps) {
     L.polyline(arl, lineOpts("#E53935")).addTo(map);
     L.polyline(srtRedNorth, lineOpts("#E53935")).addTo(map);
 
-    // Center marker
-    const centerIcon = L.divIcon({
-      className: "",
-      html: `<div class="center-marker-icon">⭐</div>`,
-      iconSize: [44, 44],
-      iconAnchor: [22, 22],
-      popupAnchor: [0, -25],
-    });
-
-    const distances = members.map((m) => ({
-      ...m,
-      dist: haversine(m.lat, m.lng, CENTER.lat, CENTER.lng),
-    }));
-    const maxDist = Math.max(...distances.map((d) => d.dist));
-
-    L.marker([CENTER.lat, CENTER.lng], {
-      icon: centerIcon,
-      zIndexOffset: 1000,
-    }).addTo(map).bindPopup(`
-        <div class="popup-title">⭐ BTS สายหยุด (N19)</div>
-        <div class="popup-sub">${CENTER.lat.toFixed(4)}, ${CENTER.lng.toFixed(4)}</div>
-        <div class="popup-dist">รัศมีครอบคลุม ${maxDist.toFixed(1)} กม.</div>
-      `);
-
-    // Member markers + connector lines
-    const memberIconFn = (emoji: string) =>
-      L.divIcon({
-        className: "",
-        html: `<div class="member-marker-icon">${emoji}</div>`,
-        iconSize: [36, 36],
-        iconAnchor: [18, 18],
-        popupAnchor: [0, -20],
-      });
-
-    distances.forEach((m) => {
-      L.marker([m.lat, m.lng], { icon: memberIconFn(m.emoji) }).addTo(map)
-        .bindPopup(`
-          <div class="popup-title">${m.emoji} ${m.name}</div>
-          <div class="popup-sub">${m.lat.toFixed(4)}, ${m.lng.toFixed(4)}</div>
-          <div class="popup-dist">ห่างจากจุดกลาง ${m.dist.toFixed(1)} กม.</div>
-        `);
-
-      L.polyline(
-        [
-          [m.lat, m.lng],
-          [CENTER.lat, CENTER.lng],
-        ],
-        {
-          color: "#ff7043",
-          weight: 1.5,
-          opacity: 0.35,
-          dashArray: "4,6",
-        },
-      ).addTo(map);
-    });
-
     // Station dots — BTS
     btsStations.forEach((s) => {
       L.circleMarker([s.lat, s.lng], {
-        radius: 4,
-        fillColor: "#1DB954",
-        color: "#fff",
-        weight: 1.5,
-        fillOpacity: 1,
-        opacity: 1,
-      })
-        .addTo(map)
-        .bindPopup(
-          `<div class="popup-title" style="color:#1DB954">🚆 BTS: ${s.name}</div>`,
-        );
+        radius: 4, fillColor: "#1DB954", color: "#fff", weight: 1.5, fillOpacity: 1, opacity: 1,
+      }).addTo(map).bindPopup(`<div class="popup-title" style="color:#1DB954">🚆 BTS: ${s.name}</div>`);
     });
-
-    // Sai Yud highlighted
-    L.circleMarker([CENTER.lat, CENTER.lng], {
-      radius: 7,
-      fillColor: "#1DB954",
-      color: "#fff",
-      weight: 2.5,
-      fillOpacity: 1,
-      opacity: 1,
-    })
-      .addTo(map)
-      .bindPopup(
-        `<div class="popup-title" style="color:#1DB954">🚆 BTS: Sai Yud (N19)</div>`,
-      );
 
     // MRT stations
     mrtStations.forEach((s) => {
       L.circleMarker([s.lat, s.lng], {
-        radius: 4,
-        fillColor: "#1A56DB",
-        color: "#fff",
-        weight: 1.5,
-        fillOpacity: 1,
-        opacity: 1,
-      })
-        .addTo(map)
-        .bindPopup(
-          `<div class="popup-title" style="color:#1A56DB">🚇 MRT: ${s.name}</div>`,
-        );
+        radius: 4, fillColor: "#1A56DB", color: "#fff", weight: 1.5, fillOpacity: 1, opacity: 1,
+      }).addTo(map).bindPopup(`<div class="popup-title" style="color:#1A56DB">🚇 MRT: ${s.name}</div>`);
     });
 
     // Red/ARL stations
     redStations.forEach((s) => {
       L.circleMarker([s.lat, s.lng], {
-        radius: 4,
-        fillColor: "#E53935",
-        color: "#fff",
-        weight: 1.5,
-        fillOpacity: 1,
-        opacity: 1,
-      })
-        .addTo(map)
-        .bindPopup(
-          `<div class="popup-title" style="color:#E53935">🚆 Red: ${s.name}</div>`,
-        );
+        radius: 4, fillColor: "#E53935", color: "#fff", weight: 1.5, fillOpacity: 1, opacity: 1,
+      }).addTo(map).bindPopup(`<div class="popup-title" style="color:#E53935">🚆 Red: ${s.name}</div>`);
     });
+
+    // Dynamic layer groups
+    participantLayerRef.current = L.layerGroup().addTo(map);
+    centerLayerRef.current = L.layerGroup().addTo(map);
 
     // Expose flyTo
     const flyToWithOffset = (lat: number, lng: number, zoom: number) => {
@@ -208,8 +113,8 @@ export default function MapView({ radius, onFlyToReady }: MapViewProps) {
       radiusCircleRef.current = null;
     }
 
-    if (radius > 0) {
-      radiusCircleRef.current = L.circle([CENTER.lat, CENTER.lng], {
+    if (radius > 0 && center) {
+      radiusCircleRef.current = L.circle([center.lat, center.lng], {
         radius,
         color: "#FFD600",
         weight: 2,
@@ -219,7 +124,74 @@ export default function MapView({ radius, onFlyToReady }: MapViewProps) {
         dashArray: "8,6",
       }).addTo(map);
     }
-  }, [radius]);
+  }, [radius, center]);
+
+  // Update participant markers
+  useEffect(() => {
+    const layer = participantLayerRef.current;
+    if (!layer) return;
+    layer.clearLayers();
+
+    participants.forEach((p) => {
+      const icon = L.divIcon({
+        className: "",
+        html: `<div class="member-marker-icon">${p.emoji}</div>`,
+        iconSize: [36, 36],
+        iconAnchor: [18, 18],
+        popupAnchor: [0, -20],
+      });
+      L.marker([p.lat, p.lng], { icon })
+        .addTo(layer)
+        .bindPopup(`
+          <div class="popup-title">${p.emoji} ${p.display_name}</div>
+          <div class="popup-sub">${p.location_name ?? `${p.lat.toFixed(4)}, ${p.lng.toFixed(4)}`}</div>
+        `);
+
+      if (center) {
+        const dist = haversine(p.lat, p.lng, center.lat, center.lng);
+        L.polyline([[p.lat, p.lng], [center.lat, center.lng]], {
+          color: "#ff7043", weight: 1.5, opacity: 0.35, dashArray: "4,6",
+        }).addTo(layer);
+        // Silent dist usage — satisfies linter
+        void dist;
+      }
+    });
+  }, [participants, center]);
+
+  // Update center marker
+  useEffect(() => {
+    const layer = centerLayerRef.current;
+    if (!layer) return;
+    layer.clearLayers();
+
+    if (!center) return;
+
+    const centerIcon = L.divIcon({
+      className: "",
+      html: `<div class="center-marker-icon">⭐</div>`,
+      iconSize: [44, 44],
+      iconAnchor: [22, 22],
+      popupAnchor: [0, -25],
+    });
+
+    L.marker([center.lat, center.lng], { icon: centerIcon, zIndexOffset: 1000 })
+      .addTo(layer)
+      .bindPopup(`
+        <div class="popup-title">⭐ จุดกลาง</div>
+        <div class="popup-sub">ใกล้ ${center.nearestStationName}</div>
+        <div class="popup-dist">รัศมีครอบคลุม ${center.maxDistKm.toFixed(1)} กม.</div>
+      `);
+
+    const stationIcon = L.divIcon({
+      className: "",
+      html: `<div class="station-suggest-icon">🚆</div>`,
+      iconSize: [32, 32],
+      iconAnchor: [16, 16],
+    });
+    L.marker([center.nearestStationLat, center.nearestStationLng], { icon: stationIcon })
+      .addTo(layer)
+      .bindPopup(`<div class="popup-title" style="color:#FFD600">🚆 แนะนำ: ${center.nearestStationName}</div>`);
+  }, [center]);
 
   return <div ref={containerRef} className="flex-1 w-full min-h-0" />;
 }
