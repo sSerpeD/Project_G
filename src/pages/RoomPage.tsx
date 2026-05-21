@@ -1,26 +1,36 @@
 import { useEffect, useState } from "react";
-import { useParams, useNavigate } from "react-router-dom";
-import { getRoomById } from "../lib/roomService";
-import { hashPassword } from "../lib/roomService";
+import { useParams, useNavigate, useSearchParams } from "react-router-dom";
+import { getRoomById, hashPassword } from "../lib/roomService";
 import { useRoom } from "../hooks/useRoom";
 import { calcCenter, calcBestTimes } from "../lib/centerCalc";
+import { getDisplayName, setGuestName } from "../lib/storage";
 import type { Room } from "../types";
 import JoinForm from "../components/JoinForm";
 import LiveView from "../components/LiveView";
+import ShareScreen from "../components/ShareScreen";
 
 export default function RoomPage() {
   const { roomId } = useParams<{ roomId: string }>();
   const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
+
+  const isFromCreate = searchParams.get("from") === "create";
+
   const [room, setRoom] = useState<Room | null>(null);
   const [notFound, setNotFound] = useState(false);
   const [passwordInput, setPasswordInput] = useState("");
   const [passwordError, setPasswordError] = useState("");
-  const [passwordUnlocked, setPasswordUnlocked] = useState(false);
+  // Creators bypass password gate
+  const [passwordUnlocked, setPasswordUnlocked] = useState(isFromCreate);
   const [hasJoined, setHasJoined] = useState(false);
+  const [showShareScreen, setShowShareScreen] = useState(isFromCreate);
 
   const { participants, isLoading } = useRoom(roomId ?? "");
   const center = calcCenter(participants);
   const bestTimes = calcBestTimes(participants);
+
+  // Resolve display name — generate guest name if none saved
+  const displayName = getDisplayName() ?? setGuestName();
 
   // Load room info
   useEffect(() => {
@@ -30,13 +40,11 @@ export default function RoomPage() {
         setNotFound(true);
         return;
       }
-      // Check expiry
       if (new Date(r.expires_at) < new Date()) {
         setNotFound(true);
         return;
       }
       setRoom(r);
-      // If no password, unlock immediately
       if (!r.password) setPasswordUnlocked(true);
     });
   }, [roomId]);
@@ -59,6 +67,12 @@ export default function RoomPage() {
     }
   }
 
+  function handleFillAvailability() {
+    setShowShareScreen(false);
+    setSearchParams({});
+  }
+
+  // ─── Not found ──────────────────────────────────────────────────────────────
   if (notFound) {
     return (
       <div className="landing-shell">
@@ -76,6 +90,7 @@ export default function RoomPage() {
     );
   }
 
+  // ─── Loading ─────────────────────────────────────────────────────────────────
   if (!room) {
     return (
       <div className="landing-shell">
@@ -84,7 +99,7 @@ export default function RoomPage() {
     );
   }
 
-  // Password gate
+  // ─── Password gate ────────────────────────────────────────────────────────────
   if (room.password && !passwordUnlocked) {
     return (
       <div className="landing-shell">
@@ -102,6 +117,7 @@ export default function RoomPage() {
               value={passwordInput}
               onChange={(e) => setPasswordInput(e.target.value)}
               onKeyDown={(e) => e.key === "Enter" && handlePasswordSubmit()}
+              autoFocus
             />
             {passwordError && <p className="landing-error">{passwordError}</p>}
             <button className="landing-cta" onClick={handlePasswordSubmit}>
@@ -113,7 +129,14 @@ export default function RoomPage() {
     );
   }
 
-  // Show live view if already joined
+  // ─── Share screen (shown after creation) ─────────────────────────────────────
+  if (showShareScreen) {
+    return (
+      <ShareScreen room={room} onFillAvailability={handleFillAvailability} />
+    );
+  }
+
+  // ─── Live view (already joined) ───────────────────────────────────────────────
   if (hasJoined) {
     return (
       <LiveView
@@ -126,11 +149,12 @@ export default function RoomPage() {
     );
   }
 
-  // Show join form
+  // ─── Join form ────────────────────────────────────────────────────────────────
   return (
     <JoinForm
       room={room}
       onJoined={() => setHasJoined(true)}
+      initialName={displayName}
     />
   );
 }

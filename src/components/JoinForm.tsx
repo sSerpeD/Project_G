@@ -8,19 +8,28 @@ import TimeSelector from "./TimeSelector";
 interface JoinFormProps {
   room: Room;
   onJoined: () => void;
+  initialName: string;
 }
 
-type Step = "name" | "location" | "time";
+type Step = "time" | "location";
 
-export default function JoinForm({ room, onJoined }: JoinFormProps) {
-  const [step, setStep] = useState<Step>("name");
-  const [name, setName] = useState("");
-  const [emoji] = useState(() => MEMBER_EMOJIS[Math.floor(Math.random() * MEMBER_EMOJIS.length)]);
+export default function JoinForm({
+  room,
+  onJoined,
+  initialName,
+}: JoinFormProps) {
+  const [step, setStep] = useState<Step>("time");
+  const [emoji] = useState(
+    () => MEMBER_EMOJIS[Math.floor(Math.random() * MEMBER_EMOJIS.length)],
+  );
+
   const [lat, setLat] = useState<number | null>(null);
   const [lng, setLng] = useState<number | null>(null);
   const [locationName, setLocationName] = useState("");
+
   const [selectedDates, setSelectedDates] = useState<string[]>([]);
   const [selectedBlocks, setSelectedBlocks] = useState<string[]>([]);
+
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
 
@@ -39,7 +48,7 @@ export default function JoinForm({ room, onJoined }: JoinFormProps) {
     setError("");
     try {
       const participant = await joinRoom(room.id, {
-        display_name: name.trim(),
+        display_name: initialName,
         lat,
         lng,
         location_name: locationName || undefined,
@@ -54,11 +63,13 @@ export default function JoinForm({ room, onJoined }: JoinFormProps) {
     }
   }
 
-  // Expiry badge
   const daysLeft = Math.max(
     0,
     Math.ceil((new Date(room.expires_at).getTime() - Date.now()) / 86400000),
   );
+
+  const steps: Step[] = ["time", "location"];
+  const stepIndex = steps.indexOf(step);
 
   return (
     <div className="landing-shell">
@@ -71,36 +82,36 @@ export default function JoinForm({ room, onJoined }: JoinFormProps) {
 
         {/* Step indicator */}
         <div className="step-indicator">
-          {(["name", "location", "time"] as Step[]).map((s, i) => (
+          {steps.map((s, i) => (
             <div
               key={s}
-              className={`step-dot ${step === s ? "active" : ""} ${
-                (step === "location" && i === 0) ||
-                (step === "time" && i <= 1)
-                  ? "done"
-                  : ""
-              }`}
+              className={`step-dot${s === step ? " active" : ""}${i < stepIndex ? " done" : ""}`}
             />
           ))}
         </div>
 
-        {/* Step: Name */}
-        {step === "name" && (
+        {/* User badge */}
+        <div className="join-user-badge">
+          <span>{emoji}</span>
+          <span className="join-user-name">{initialName}</span>
+        </div>
+
+        {/* Step: Time */}
+        {step === "time" && (
           <div className="step-content">
-            <div className="step-emoji">{emoji}</div>
-            <h3 className="step-title">คุณชื่ออะไร?</h3>
-            <input
-              className="landing-input"
-              type="text"
-              placeholder="ชื่อเล่นหรือชื่อจริงก็ได้"
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              maxLength={30}
-              autoFocus
+            <h3 className="step-title">ว่างวันไหน?</h3>
+            <p className="step-sub">เลือกได้หลายวัน หลายช่วงเวลา</p>
+            <TimeSelector
+              selectedDates={selectedDates}
+              selectedBlocks={selectedBlocks}
+              onDatesChange={setSelectedDates}
+              onBlocksChange={setSelectedBlocks}
             />
             <button
               className="landing-cta"
-              disabled={!name.trim()}
+              disabled={
+                selectedDates.length === 0 || selectedBlocks.length === 0
+              }
               onClick={() => setStep("location")}
             >
               ต่อไป →
@@ -118,45 +129,18 @@ export default function JoinForm({ room, onJoined }: JoinFormProps) {
               selectedLat={lat}
               selectedLng={lng}
             />
-            <div className="step-nav">
-              <button className="back-btn" onClick={() => setStep("name")}>
-                ← กลับ
-              </button>
-              <button
-                className="landing-cta"
-                style={{ flex: 1 }}
-                disabled={lat === null}
-                onClick={() => setStep("time")}
-              >
-                ต่อไป →
-              </button>
-            </div>
-          </div>
-        )}
-
-        {/* Step: Time */}
-        {step === "time" && (
-          <div className="step-content">
-            <h3 className="step-title">ว่างวันไหน?</h3>
-            <p className="step-sub">เลือกได้หลายวัน</p>
-            <TimeSelector
-              selectedDates={selectedDates}
-              selectedBlocks={selectedBlocks}
-              onDatesChange={setSelectedDates}
-              onBlocksChange={setSelectedBlocks}
-            />
             {error && <p className="landing-error">{error}</p>}
             <div className="step-nav">
-              <button className="back-btn" onClick={() => setStep("location")}>
+              <button className="back-btn" onClick={() => setStep("time")}>
                 ← กลับ
               </button>
               <button
                 className="landing-cta"
                 style={{ flex: 1 }}
-                disabled={loading || selectedDates.length === 0 || selectedBlocks.length === 0}
+                disabled={loading || lat === null}
                 onClick={handleSubmit}
               >
-                {loading ? "กำลังเข้าร่วม..." : "🎉 เข้าร่วม!"}
+                {loading ? "กำลังเข้าร่วม..." : "เข้าร่วม!"}
               </button>
             </div>
           </div>
