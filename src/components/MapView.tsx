@@ -44,8 +44,12 @@ export default function MapView({ radius, onFlyToReady }: MapViewProps) {
 
     mapRef.current = map;
 
-    setTimeout(() => map.invalidateSize(), 50);
-    window.addEventListener("resize", () => map.invalidateSize());
+    // ResizeObserver fires on every container size change:
+    // - initial flex layout settling (replaces the brittle 50ms timeout)
+    // - bottom panel collapse/expand (replaces the manual invalidateSize in togglePanel)
+    // - window resize
+    const ro = new ResizeObserver(() => map.invalidateSize());
+    ro.observe(containerRef.current!);
 
     L.tileLayer(
       "https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png",
@@ -190,7 +194,7 @@ export default function MapView({ radius, onFlyToReady }: MapViewProps) {
     onFlyToReady(flyToWithOffset);
 
     return () => {
-      window.removeEventListener("resize", () => map.invalidateSize());
+      ro.disconnect();
     };
   }, []);
 
